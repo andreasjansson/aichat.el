@@ -45,7 +45,7 @@
         (setq separator-position (string-match-p "\n\n" accumulated-output)))))
   accumulated-output)
 
-(defun ai--process-sentinel (proc text-extractor callback complete-callback cancel-callback accumulated-output output-buffer original-quit-binding)
+(defun ai--process-sentinel (proc text-extractor callback complete-callback cancel-callback restore-callback accumulated-output)
   "Process sentinel function for handling the completion or cancellation of the curl process."
   (when (memq (process-status proc) '(exit signal))
     (unless (string-empty-p accumulated-output)
@@ -55,8 +55,7 @@
           (funcall callback (funcall text-extractor accumulated-output))
         (error nil))
       )
-    (with-current-buffer output-buffer
-      (local-set-key (kbd "C-g") original-quit-binding))
+    (funcall restore-callback)
     (if (= (process-exit-status proc) 0)
         (when complete-callback (funcall complete-callback))
       (when cancel-callback (funcall cancel-callback)))))
@@ -223,10 +222,18 @@ The first system message in the dialog is used as a top-level system message."
          (accumulated-output "")
          (original-quit-binding (with-current-buffer output-buffer
                                   (local-key-binding (kbd "C-g"))))
-         (process (start-process-shell-command "http-client-curl" nil curl-command)))
+         (process (start-process-shell-command "http-client-curl" nil curl-command))
+         (undo-handle (prepare-change-group output-buffer))
+         (restore-callback (lambda ()
+                             (with-current-buffer output-buffer
+                               (local-set-key (kbd "C-g") original-quit-binding)
+                               (undo-amalgamate-change-group undo-handle)
+                               (accept-change-group undo-handle)))))
+
+    (activate-change-group undo-handle)
 
     ;; TODO: remove debug
-    (message (format "request-data: %s" request-data))
+    (prin1 request-data)
 
     (set-process-filter
      process (lambda (proc output)
@@ -235,8 +242,7 @@ The first system message in the dialog is used as a top-level system message."
     (set-process-sentinel
      process (lambda (proc event)
                (ai--process-sentinel
-                proc text-extractor text-callback complete-callback cancel-callback
-                accumulated-output output-buffer original-quit-binding)))
+                proc text-extractor text-callback complete-callback cancel-callback restore-callback accumulated-output)))
     (set-process-query-on-exit-flag process nil)
 
     (with-current-buffer output-buffer
@@ -249,7 +255,7 @@ The first system message in the dialog is used as a top-level system message."
                          (sit-for 0.1)
                          (delete-process process)
                          (when cancel-callback (funcall cancel-callback)))
-                       (local-set-key (kbd "C-g") original-quit-binding)
+                       (funcall restore-callback)
                        )))))
 
 (defun ai-paragraph ()
@@ -270,3 +276,8 @@ The first system message in the dialog is used as a top-level system message."
   (interactive "sPrompt: ")
   (let ((system-prompt "You are a helpful assistant."))
     (ai-stream system-prompt prompt)))
+
+(defun ai--map-dialog-content (fn dialog)
+  (mapcar (lambda (message)
+            (cons (car message) (funcall fn (cdr message))))
+          dialog))
