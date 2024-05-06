@@ -21,33 +21,6 @@
     (customize-set-variable 'ai-model (intern model))
     (message "Model set to %s" model)))
 
-(defun ai--http-client-request (url method headers data text-extractor callback &optional complete-callback cancel-callback filter-separator output-buffer)
-  "Make an HTTP request using curl and stream the response."
-  (let ((curl-command (ai--build-curl-command url method headers data))
-        (filter-separator (or filter-separator "\n\n"))
-        (accumulated-output "")
-        (process nil)
-        (original-quit-binding (with-current-buffer output-buffer
-                                 (local-key-binding (kbd "C-g")))))
-    (setq process (start-process-shell-command "http-client-curl" nil curl-command))
-    (set-process-filter process (lambda (proc output)
-                                  (setq accumulated-output (ai--process-filter output text-extractor callback filter-separator accumulated-output))))
-    (set-process-sentinel process (lambda (proc event)
-                                    (ai--process-sentinel proc text-extractor callback complete-callback cancel-callback accumulated-output output-buffer original-quit-binding)))
-    (set-process-query-on-exit-flag process nil)
-    (with-current-buffer output-buffer
-      (local-set-key (kbd "C-g")
-                     (lambda ()
-                       (interactive)
-                       (when (process-live-p process)
-                         (message "Interrupting generation")
-                         (interrupt-process process)
-                         (sit-for 0.1)
-                         (delete-process process)
-                         (when cancel-callback (funcall cancel-callback)))
-                       (local-set-key (kbd "C-g") original-quit-binding)
-                       )))))
-
 (defun ai--build-curl-command (url method headers data)
   "Build the curl command string based on the provided parameters."
   (let ((header-strings (mapconcat (lambda (header)
@@ -60,16 +33,16 @@
           data-string
           url)))
 
-(defun ai--process-filter (output text-extractor callback filter-separator accumulated-output)
+(defun ai--process-filter (output text-extractor callback accumulated-output)
   "Process filter function for handling the output of the curl process."
   (setq accumulated-output (concat accumulated-output output))
-  (let ((separator-position (string-match-p filter-separator accumulated-output)))
+  (let ((separator-position (string-match-p "\n\n" accumulated-output)))
     (while separator-position
       (let* ((chunk (substring accumulated-output 0 separator-position))
              (text (funcall text-extractor chunk)))
         (funcall callback text)
-        (setq accumulated-output (substring accumulated-output (+ separator-position (length filter-separator))))
-        (setq separator-position (string-match-p filter-separator accumulated-output)))))
+        (setq accumulated-output (substring accumulated-output (+ separator-position (length "\n\n"))))
+        (setq separator-position (string-match-p "\n\n" accumulated-output)))))
   accumulated-output)
 
 (defun ai--process-sentinel (proc text-extractor callback complete-callback cancel-callback accumulated-output output-buffer original-quit-binding)
@@ -245,16 +218,55 @@ The first system message in the dialog is used as a top-level system message."
                           (with-current-buffer output-buffer
                             (goto-char insert-position)
                             (insert text)
-                            (setq insert-position (point))))))
+                            (setq insert-position (point)))))
+         (curl-command (ai--build-curl-command api-url "POST" request-headers request-data))
+         (accumulated-output "")
+         (original-quit-binding (with-current-buffer output-buffer
+                                  (local-key-binding (kbd "C-g"))))
+         (process (start-process-shell-command "http-client-curl" nil curl-command)))
+
     ;; TODO: remove debug
     (message (format "request-data: %s" request-data))
-    (ai--http-client-request api-url
-                             "POST"
-                             request-headers
-                             request-data
-                             text-extractor
-                             text-callback
-                             complete-callback
-                             cancel-callback
-                             nil
-                             output-buffer)))
+
+    (set-process-filter
+     process (lambda (proc output)
+               (setq accumulated-output
+                     (ai--process-filter output text-extractor text-callback accumulated-output))))
+    (set-process-sentinel
+     process (lambda (proc event)
+               (ai--process-sentinel
+                proc text-extractor text-callback complete-callback cancel-callback
+                accumulated-output output-buffer original-quit-binding)))
+    (set-process-query-on-exit-flag process nil)
+
+    (with-current-buffer output-buffer
+      (local-set-key (kbd "C-g")
+                     (lambda ()
+                       (interactive)
+                       (when (process-live-p process)
+                         (message "Interrupting generation")
+                         (interrupt-process process)
+                         (sit-for 0.1)
+                         (delete-process process)
+                         (when cancel-callback (funcall cancel-callback)))
+                       (local-set-key (kbd "C-g") original-quit-binding)
+                       )))))
+
+(defun ai-paragraph ()
+  "Fetch the previous paragraph and use it as a prompt for AI streaming after inserting two newlines."
+  (interactive)
+  (let (para-start para-end para-text)
+    (backward-paragraph)
+    (setq para-start (point))
+    (forward-paragraph)
+    (setq para-end (point))
+    (setq para-text (string-trim (buffer-substring-no-properties para-start para-end)))
+    (goto-char para-end)
+    (insert "\n\n")
+    (ai-stream "You are a helpful assistant" para-text)))
+
+(defun ai-prompt (prompt)
+  "Ask AI a question and insert the response at the current point."
+  (interactive "sPrompt: ")
+  (let ((system-prompt "You are a helpful assistant."))
+    (ai-stream system-prompt prompt)))
