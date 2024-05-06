@@ -233,7 +233,7 @@ The first system message in the dialog is used as a top-level system message."
     (activate-change-group undo-handle)
 
     ;; TODO: remove debug
-    (prin1 request-data)
+    ;; (prin1 request-data)
 
     (set-process-filter
      process (lambda (proc output)

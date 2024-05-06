@@ -9,6 +9,8 @@
     map)
   "Keymap for `ai-chat-mode'.")
 
+(add-to-list 'auto-mode-alist '("\\.ai\\'" . ai-chat-mode))
+
 (defvar ai-chat-user-tag "## USER:")
 (defvar ai-chat-assistant-tag "## ASSISTANT:")
 (defvar ai-chat-system-tag "## SYSTEM:")
@@ -16,7 +18,8 @@
 (define-derived-mode ai-chat-mode gfm-mode "AI"
   "Major mode for interacting with AI."
   (use-local-map ai-chat-mode-map)
-  (setq-local markdown-fontify-code-blocks-natively t))
+  (setq-local markdown-fontify-code-blocks-natively t)
+  (setq-local mode-line-misc-info '(:eval (symbol-name ai-model))))
 
 (defun ai-chat ()
   "Create a new buffer and switch to `ai-chat-mode`."
@@ -24,7 +27,8 @@
   (let ((buffer (generate-new-buffer "*ai-chat*")))
     (switch-to-buffer buffer)
     (ai-chat-mode)
-    (insert ai-chat-system-tag
+    (insert "<!-- -*- mode: ai-chat -*- -->\n\n"
+            ai-chat-system-tag
             "\n\nYou are a helpful assistant.\n\n"
             ai-chat-user-tag
             "\n\n")
@@ -70,7 +74,8 @@
   "Parse the buffer content into a dialog format."
   (let ((dialog ())
         (current-role nil)
-        (current-content ""))
+        (current-content "")
+        (is-in-comment nil))
     (dolist (line (split-string buffer-content "\n"))
       (cond
        ((string-prefix-p ai-chat-system-tag line)
@@ -104,5 +109,5 @@
     ;; Check if the file exists to handle the case where the user inputs an invalid file path.
     (if (file-exists-p file)
         ;; Insert format string at the current point.
-        (insert (format "<context-path>%s</context-path>'n" file))
+        (insert (format "<ai-context>%s</ai-context>'n" file))
       (message "File does not exist!"))))
