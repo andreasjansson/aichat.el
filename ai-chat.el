@@ -5,7 +5,8 @@
     (define-key map (kbd "C-c u") 'ai-chat-insert-user-tag)
     (define-key map (kbd "C-c s") 'ai-chat-insert-system-tag)
     (define-key map (kbd "C-c f") 'ai-chat-context-file)
-    (define-key map (kbd "C-c b") 'ai-chat-context-path)
+    (define-key map (kbd "C-c b") 'ai-chat-context-buffer)
+    (define-key map (kbd "C-c h") 'ai-chat-context-http-url)
     map)
   "Keymap for `ai-chat-mode'.")
 
@@ -27,9 +28,9 @@
   (let ((buffer (generate-new-buffer "*ai-chat*")))
     (switch-to-buffer buffer)
     (ai-chat-mode)
-    (insert "<!-- -*- mode: ai-chat -*- -->\n\n"
+    (insert ;;"<!-- -*- mode: ai-chat -*- -->\n\n" ;; not working yet, need to update the parser to ignore this
             ai-chat-system-tag
-            "\n\nYou are a helpful assistant.\n\n"
+            "\n\n" ai-default-system-prompt "\n\n"
             ai-chat-user-tag
             "\n\n")
     (message (format "Using model %s" ai-model))))
@@ -109,5 +110,42 @@
     ;; Check if the file exists to handle the case where the user inputs an invalid file path.
     (if (file-exists-p file)
         ;; Insert format string at the current point.
-        (insert (format "<ai-context>%s</ai-context>'n" file))
+        (insert (format "<ai-context>%s</ai-context>\n\n" file))
       (message "File does not exist!"))))
+
+(defun ai-chat-context-buffer ()
+  (interactive)
+  (let ((path (buffer-file-name (current-buffer))))
+    ;; Insert format string at the current point.
+    (insert (format "<ai-context>%s</ai-context>\n\n" path))))
+
+(defun ai-chat-context-http-url (url)
+  (interactive "sURL: ")
+  (insert (format "<ai-context>%s</ai-context>\n\n" url)))
+
+(defun ai--chat-load-context (content)
+  "Replace <ai-context> tags with the content of the specified file or URL."
+  (let ((start-tag "<ai-context>")
+        (end-tag "</ai-context>"))
+    (with-temp-buffer
+      (insert content)
+      (goto-char (point-min))
+      (while (re-search-forward (concat start-tag "\\(.*?\\)" end-tag) nil t)
+        (let* ((path (match-string 1))
+               (content (cond
+                         ((file-exists-p path)
+                          (with-temp-buffer
+                            (insert-file-contents path)
+                            (buffer-string)))
+                         ((string-prefix-p "http" path)
+                          (with-current-buffer (url-retrieve-synchronously path)
+                            (goto-char (point-min))
+                            (re-search-forward "^$")
+                            (buffer-substring (point) (point-max))))
+                         (t
+                          (message "Invalid path or URL: %s" path)
+                          nil))))
+          (if content
+              (replace-match content t t)
+            (message "Failed to load content from: %s" path))))
+      (buffer-string))))

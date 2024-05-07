@@ -1,7 +1,8 @@
 ;; -*- lexical-binding: t -*-
 
 (defconst ai-available-models
-  '(claude/claude-3-haiku-20240307
+  '(replicate/snowflake/snowflake-arctic-instruct
+    claude/claude-3-haiku-20240307
     claude/claude-3-opus-20240229
     openai/gpt-4-turbo
     groq/llama3-8b-8192
@@ -12,6 +13,11 @@
 (defcustom ai-model 'claude/claude-3-haiku-20240307
   "The currently used model."
   :type `(choice ,@(mapcar (lambda (model) `(const ,model)) ai-available-models))
+  :group 'ai)
+
+(defcustom ai-default-system-prompt "You are a helpful assistant"
+  "Default system prompt used for AI interactions."
+  :type 'string
   :group 'ai)
 
 (defun ai-set-model ()
@@ -106,7 +112,8 @@
 
 (defun ai--model-name (model)
   "Get the name of the AI model."
-  (cadr (split-string (symbol-name model) "/")))
+  (let ((parts (split-string (symbol-name model) "/")))
+    (mapconcat 'identity (cdr parts) "/")))
 
 (defun ai--get-api-url (provider)
   "Get the API URL based on the AI model provider."
@@ -233,7 +240,7 @@ The first system message in the dialog is used as a top-level system message."
     (activate-change-group undo-handle)
 
     ;; TODO: remove debug
-    ;; (prin1 request-data)
+    ;;(prin1 request-data)
 
     (set-process-filter
      process (lambda (proc output)
@@ -269,12 +276,12 @@ The first system message in the dialog is used as a top-level system message."
     (setq para-text (string-trim (buffer-substring-no-properties para-start para-end)))
     (goto-char para-end)
     (insert "\n\n")
-    (ai-stream "You are a helpful assistant" para-text)))
+    (ai-stream ai-default-system-prompt para-text)))
 
 (defun ai-prompt (prompt)
   "Ask AI a question and insert the response at the current point."
   (interactive "sPrompt: ")
-  (let ((system-prompt "You are a helpful assistant."))
+  (let ((system-prompt ai-default-system-prompt))
     (ai-stream system-prompt prompt)))
 
 (defun ai--map-dialog-content (fn dialog)
