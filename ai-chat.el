@@ -6,7 +6,6 @@
     (define-key map (kbd "C-c s") 'ai-chat-insert-system-tag)
     (define-key map (kbd "C-c f") 'ai-chat-context-file)
     (define-key map (kbd "C-c b") 'ai-chat-context-buffer)
-    (define-key map (kbd "C-c h") 'ai-chat-context-http-url)
     map)
   "Keymap for `ai-chat-mode'.")
 
@@ -115,13 +114,12 @@
 
 (defun ai-chat-context-buffer ()
   (interactive)
-  (let ((path (buffer-file-name (current-buffer))))
-    ;; Insert format string at the current point.
-    (insert (format "<ai-context>%s</ai-context>\n\n" path))))
-
-(defun ai-chat-context-http-url (url)
-  (interactive "sURL: ")
-  (insert (format "<ai-context>%s</ai-context>\n\n" url)))
+  (let ((buffer-name (read-buffer "Select buffer: " nil t)))
+    (when buffer-name
+      (let ((buffer (get-buffer buffer-name)))
+        (when buffer
+          (let ((path (buffer-file-name buffer)))
+            (insert (format "<ai-context>%s</ai-context>\n\n" path))))))))
 
 (defun ai--chat-load-context (content)
   "Replace <ai-context> tags with the content of the specified file or URL."
@@ -137,7 +135,7 @@
                           (with-temp-buffer
                             (insert-file-contents path)
                             (buffer-string)))
-                         ((string-prefix-p "http" path)
+                         ((string-prefix-p "http" path) ;; this doesn't currently work!
                           (with-current-buffer (url-retrieve-synchronously path)
                             (goto-char (point-min))
                             (re-search-forward "^$")
