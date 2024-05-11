@@ -134,7 +134,7 @@
       (insert "\n\n" aichat-assistant-tag "\n\n"))))
 
 (defun aichat-buffer ()
-  "Send the buffer content to AI as a dialog, move to the end, insert a prefix, and insert the response at the end."
+  "Send the buffer content to AI as a dialog."
   (interactive)
   (let* ((buffer-content (buffer-substring-no-properties (point-min) (point-max)))
          (dialog (aichat--parse-dialog buffer-content)))
@@ -228,7 +228,7 @@
   accumulated-output)
 
 (defun aichat--process-sentinel (proc text-extractor callback complete-callback cancel-callback restore-callback accumulated-output)
-  "Process sentinel function for handling the completion or cancellation of the curl process."
+  "Function for handling the completion or cancellation of the curl process."
   (when (memq (process-status proc) '(exit signal))
     (unless (string-empty-p accumulated-output)
       ;; do the final generation, but if the user has hit C-g it might
@@ -404,7 +404,7 @@
                    ("stream" . t)))))
 
 (defun aichat-stream (system-prompt prompt &optional complete-callback cancel-callback)
-  "Stream the response from the AI model for the given system prompt and user prompt."
+  "Stream the response from the AI model for SYSTEM-PROMPT and user PROMPT."
   (let ((dialog `((system . ,system-prompt)
                   (user . ,prompt))))
     (aichat-stream-dialog dialog complete-callback cancel-callback)))
@@ -444,11 +444,11 @@
     ;;(prin1 request-data)
 
     (set-process-filter
-     process (lambda (proc output)
+     process (lambda (_proc output)
                (setq accumulated-output
                      (aichat--process-filter output text-extractor text-callback accumulated-output))))
     (set-process-sentinel
-     process (lambda (proc event)
+     process (lambda (proc _event)
                (aichat--process-sentinel
                 proc text-extractor text-callback complete-callback cancel-callback restore-callback accumulated-output)))
     (set-process-query-on-exit-flag process nil)
@@ -490,6 +490,11 @@
             (cons (car message) (funcall fn (cdr message))))
           dialog))
 
+(defsubst aichat--parse-spaces ()
+  "Parse any number of whitespace characters."
+  (parsec-many-as-string
+   (parsec-re "[[:space:]\r\n]")))
+
 (defun aichat--parse-dialog (s)
   "Parse the input string S into a dialog structure."
   (parsec-with-input s
@@ -502,11 +507,6 @@
       (if untagged-section
           (cons untagged-section sections)
         sections))))
-
-(defsubst aichat--parse-spaces ()
-  "Parse any number of whitespace characters."
-  (parsec-many-as-string
-   (parsec-re "[[:space:]\r\n]")))
 
 (defun aichat--parse-comment ()
   "Parse an HTML comment."
@@ -617,7 +617,7 @@
       (aichat--dom-texts-inline-aware dom))))
 
 (defun aichat--dom-texts-inline-aware (node &optional block-separator inline-separator)
-  "Extract the text content from the given DOM node, with awareness of inline and block elements."
+  "Extract text from the given DOM node, aware of inline and block elements."
   (let ((block-separator (or block-separator "\n"))
         (inline-separator (or inline-separator " ")))
     (mapconcat
