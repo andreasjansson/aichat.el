@@ -23,6 +23,8 @@ The following API keys must be set in the environment to be able to use cloud AP
 
 Ollama doesn't need any API keys since it's running locally.
 
+You can use `(setenv <provider> <api-key>)` to set environment variables if they're not loaded automatically in Emacs.
+
 ## Usage
 
 `M-x aichat` starts a new chat session.
