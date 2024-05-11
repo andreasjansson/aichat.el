@@ -441,9 +441,6 @@
 
     (activate-change-group undo-handle)
 
-    ;; TODO: remove debug
-    ;;(prin1 request-data)
-
     (set-process-filter
      process (lambda (_proc output)
                (setq accumulated-output
