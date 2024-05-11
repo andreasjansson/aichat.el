@@ -1,6 +1,8 @@
 # aichat.el
 
-Chat with language models in Emacs.
+_Chat with language models in Emacs._
+
+![cap.gif]()
 
 ## Features
 
