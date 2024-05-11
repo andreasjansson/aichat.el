@@ -80,8 +80,6 @@
     map)
   "Keymap for `aichat-mode'.")
 
-                                        ;(add-to-list 'auto-mode-alist '("\\.ai\\'" . aichat-mode))
-
 (define-derived-mode aichat-mode gfm-mode "AI"
   "Major mode for interacting with AI."
   (use-local-map aichat-mode-map)
@@ -167,7 +165,7 @@
 
 (defun aichat-context-http-url (url)
   "Insert an <ai-context> to the provided URL at point."
-  (interactive "sUrl: ")
+  (interactive "sURL: ")
   (insert (format "<ai-context>%s</ai-context>\n\n" url)))
 
 (defun aichat-copy-code ()
