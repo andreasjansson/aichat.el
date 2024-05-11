@@ -60,12 +60,12 @@ What's the next folk music event in Bohuslän?
 
 ### Key bindings
 
-* `M-<return>"` - Send the chat buffer to the AI and get an assistant response
-* `C-; u"` - Insert the string "USER:"
-* `C-; s"` - Insert the string "SYSTEM:"
-* `C-; a"` - Insert the string "ASSISTANT:"
-* `C-; f"` - Insert an `<ai-context>` tag with the name of a file on disk
-* `C-; b"` - Insert an `<ai-context>` tag with the filename of an open buffer
-* `C-; h"` - Insert an `<ai-context>` tag with a website URL
-* `C-; m"` - Change AI model
-* `C-; c"` - Copy the current code block (delimited by triple backticks)
+* `M-<return>` - Send the chat buffer to the AI and get an assistant response
+* `C-; u` - Insert the string "USER:"
+* `C-; s` - Insert the string "SYSTEM:"
+* `C-; a` - Insert the string "ASSISTANT:"
+* `C-; f` - Insert an `<ai-context>` tag with the name of a file on disk
+* `C-; b` - Insert an `<ai-context>` tag with the filename of an open buffer
+* `C-; h` - Insert an `<ai-context>` tag with a website URL
+* `C-; m` - Change AI model
+* `C-; c` - Copy the current code block (delimited by triple backticks)
