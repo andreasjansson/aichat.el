@@ -80,7 +80,7 @@
     map)
   "Keymap for `aichat-mode'.")
 
-;(add-to-list 'auto-mode-alist '("\\.ai\\'" . aichat-mode))
+                                        ;(add-to-list 'auto-mode-alist '("\\.ai\\'" . aichat-mode))
 
 (define-derived-mode aichat-mode gfm-mode "AI"
   "Major mode for interacting with AI."
@@ -100,10 +100,10 @@
     (switch-to-buffer buffer)
     (aichat-mode)
     (insert ;;"<!-- -*- mode: aichat -*- -->\n\n" ;; not working yet, need to update the parser to ignore this
-            aichat-system-tag
-            "\n\n" aichat-default-system-prompt "\n\n"
-            aichat-user-tag
-            "\n\n")
+     aichat-system-tag
+     "\n\n" aichat-default-system-prompt "\n\n"
+     aichat-user-tag
+     "\n\n")
     (message (format "Using model %s" aichat-model))))
 
 (defun aichat-insert-assistant-tag ()
@@ -205,19 +205,27 @@
     (message "Model set to %s" model)))
 
 (defun aichat--build-curl-command (url method headers data)
-  "Build the curl command string based on the provided parameters."
+  "Build the curl command string.
+URL is the request URL.
+METHOD is the HTTP method.
+HEADERS is an alist of HTTP headers.
+DATA is the request body."
   (let ((header-strings (mapconcat (lambda (header)
                                      (format "-H \"%s: %s\"" (car header) (cdr header)))
                                    headers " "))
         (data-string (if data (format "-d '%s'" (replace-regexp-in-string "'" "'\\\\''" data)) "")))
     (format "curl -s -X %s %s %s %s"
-          method
-          header-strings
-          data-string
-          url)))
+            method
+            header-strings
+            data-string
+            url)))
 
 (defun aichat--process-filter (output text-extractor callback accumulated-output)
-  "Process filter function for handling the output of the curl process."
+  "Process filter function for handling the output of the curl process.
+OUTPUT is the latest chunk of output from the process.
+TEXT-EXTRACTOR is a function to extract text from the OUTPUT.
+CALLBACK is a function to call with the extracted text.
+ACCUMULATED-OUTPUT is the accumulated output from previous calls."
   (setq accumulated-output (concat accumulated-output output))
   (let ((separator-position (string-match-p "\n\n" accumulated-output)))
     (while separator-position
@@ -229,21 +237,29 @@
   accumulated-output)
 
 (defun aichat--process-sentinel (proc text-extractor callback complete-callback cancel-callback restore-callback accumulated-output)
-  "Function for handling the completion or cancellation of the curl process."
-  (when (memq (process-status proc) '(exit signal))
-    (unless (string-empty-p accumulated-output)
-      ;; do the final generation, but if the user has hit C-g it might
-      ;; not result in valid json
-      (condition-case nil
-          (funcall callback (funcall text-extractor accumulated-output))
-        (error nil)))
-    (funcall restore-callback)
-    (if (= (process-exit-status proc) 0)
-        (when complete-callback (funcall complete-callback))
-      (when cancel-callback (funcall cancel-callback)))))
+  "Function for handling the completion or cancellation of the curl process.
+PROC is the curl process.
+TEXT-EXTRACTOR extracts text from the final ACCUMULATED-OUTPUT.
+CALLBACK is called with the final extracted text.
+COMPLETE-CALLBACK is called if the process completed successfully.
+CANCEL-CALLBACK is called if the process was cancelled.
+RESTORE-CALLBACK restores the buffer state.
+ACCUMULATED-OUTPUT is the final output from the process.")
+"Function for handling the completion or cancellation of the curl process."
+(when (memq (process-status proc) '(exit signal))
+  (unless (string-empty-p accumulated-output)
+    ;; do the final generation, but if the user has hit C-g it might
+    ;; not result in valid json
+    (condition-case nil
+        (funcall callback (funcall text-extractor accumulated-output))
+      (error nil)))
+  (funcall restore-callback)
+  (if (= (process-exit-status proc) 0)
+      (when complete-callback (funcall complete-callback))
+    (when cancel-callback (funcall cancel-callback)))))
 
 (defun aichat--extra-text-fn (provider)
-  "Return the appropriate text extraction function for the given provider."
+  "Return the text extraction function for PROVIDER."
   (cond
    ((string= provider "replicate")
     #'aichat--openai-extract-text)
@@ -257,7 +273,7 @@
     #'aichat--openai-extract-text)))
 
 (defun aichat--claude-extract-text (event)
-  "Extract the text from a Claude event."
+  "Extract the text from a Claude EVENT."
   (let ((event-parts (split-string event "\n" t)))
     (when (>= (length event-parts) 2)
       (let ((event-type (car event-parts))
@@ -267,14 +283,14 @@
           "")))))
 
 (defun aichat--claude-content-block-delta-extract-text (data)
-  "Handle the content_block_delta event."
+  "Extract the text from the content_block_delta DATA."
   (let* ((block-data (json-read-from-string data))
          (delta (assoc-default 'delta block-data))
          (text (assoc-default 'text delta)))
     text))
 
 (defun aichat--openai-extract-text (event)
-  "Extract the text from an OpenAI event."
+  "Extract the text from an OpenAI EVENT."
   (if (string-prefix-p "data: " event)
       (let ((data-string (substring event 6)))
         (if (string-prefix-p "[DONE]" data-string)
@@ -290,16 +306,16 @@
     ""))
 
 (defun aichat--model-provider (model)
-  "Get the provider of the current AI model."
+  "Get the provider of the AI MODEL."
   (car (split-string (symbol-name model) "/")))
 
 (defun aichat--model-name (model)
-  "Get the name of the current AI model."
+  "Get the name of the AI MODEL."
   (let ((parts (split-string (symbol-name model) "/")))
     (mapconcat #'identity (cdr parts) "/")))
 
 (defun aichat--get-api-url (provider)
-  "Get the API URL based on the AI model provider."
+  "Get the API URL based on the PROVIDER."
   (cond
    ((string= provider "replicate")
     "https://openai-proxy.replicate.com/v1/chat/completions")
@@ -313,7 +329,7 @@
     "http://localhost:11434/v1/chat/completions")))
 
 (defun aichat--get-api-key (provider)
-  "Get the API key based on the AI model provider."
+  "Get the API key based on the PROVIDER."
   (cond
    ((string= provider "replicate")
     (aichat--must-env "REPLICATE_API_KEY"))
@@ -327,14 +343,14 @@
     nil)))
 
 (defun aichat--must-env (key)
-  "Ensure the environment variable KEY is set, or raise an error."
+  "Raise an error if the environment variable KEY is not set."
   (let ((value (getenv key)))
     (unless value
       (error (format "Please set the %s environment variable" key)))
     value))
 
 (defun aichat--get-request-headers (provider api-key)
-  "Get the request headers based on the AI model provider."
+  "Get the request headers for PROVIDER using API-KEY."
   (let ((headers `(("Content-Type" . "application/json"))))
     (cond
      ((string= provider "replicate")
@@ -352,7 +368,7 @@
     headers))
 
 (defun aichat--request-data-fn (provider)
-  "Return the appropriate request data function for the given provider."
+  "Return the request data function for PROVIDER."
   (cond
    ((string= provider "replicate")
     #'aichat--openai-request-data)
@@ -366,7 +382,9 @@
     #'aichat--openai-request-data)))
 
 (defun aichat--openai-request-data (model-name dialog)
-  "Create the request data for the API call using a multi-turn dialog."
+  "Create the request data for the OpenAI API call.
+MODEL-NAME is the name of the model to use.
+DIALOG is the multi-turn dialog to send."
   (let* ((messages (mapcar (lambda (message)
                              `((role . ,(symbol-name (car message)))
                                (content . ,(cdr message))))
@@ -382,7 +400,9 @@
                    ("stream" . t)))))
 
 (defun aichat--claude-request-data (model-name dialog)
-  "Create the request data for the Claude API call using a multi-turn dialog."
+  "Create the request data for the Claude API call.
+MODEL-NAME is the name of the model to use.
+DIALOG is the multi-turn dialog to send."
   (let ((system-message nil)
         (user-messages ()))
     ;; Separate system messages and collect user messages
@@ -405,13 +425,17 @@
                    ("stream" . t)))))
 
 (defun aichat-stream (system-prompt prompt &optional complete-callback cancel-callback)
-  "Stream the response from the AI model for SYSTEM-PROMPT and user PROMPT."
+  "Stream the AI response for SYSTEM-PROMPT and user PROMPT.
+COMPLETE-CALLBACK is called when done.
+CANCEL-CALLBACK is called if cancelled."
   (let ((dialog `((system . ,system-prompt)
                   (user . ,prompt))))
     (aichat-stream-dialog dialog complete-callback cancel-callback)))
 
 (defun aichat-stream-dialog (dialog &optional complete-callback cancel-callback)
-  "Stream the response from the AI model for the given multi-turn dialog."
+  "Stream the AI response for the multi-turn DIALOG.
+COMPLETE-CALLBACK is called when done.
+CANCEL-CALLBACK is called if cancelled."
   (let* ((provider (aichat--model-provider aichat-model))
          (model-name (aichat--model-name aichat-model))
          (api-url (aichat--get-api-url provider))
@@ -477,13 +501,13 @@
     (aichat-stream aichat-default-system-prompt para-text)))
 
 (defun aichat-prompt (prompt)
-  "Ask AI a question and insert the response at the current point."
+  "Ask AI a PROMPT and insert the response at the current point."
   (interactive "sPrompt: ")
   (let ((system-prompt aichat-default-system-prompt))
     (aichat-stream system-prompt prompt)))
 
 (defun aichat--map-dialog-content (fn dialog)
-  "Apply the function FN to the content of each message in the DIALOG."
+  "Apply FN to the content of each message in DIALOG."
   (mapcar (lambda (message)
             (cons (car message) (funcall fn (cdr message))))
           dialog))
@@ -494,7 +518,7 @@
    (parsec-re "[[:space:]\r\n]")))
 
 (defun aichat--parse-dialog (s)
-  "Parse the input string S into a dialog structure."
+  "Parse the string S into a dialog structure."
   (parsec-with-input s
     (aichat--parse-spaces)
     (let ((untagged-section (parsec-optional (aichat--parse-untagged-section)))
@@ -525,7 +549,7 @@
      (concat (car out) (cdr out)))))
 
 (defun aichat--parse-followed-by-tag (tag)
-  "Check if the input is followed by the given TAG."
+  "Check if the input is followed by TAG."
   (parsec-lookahead (parsec-str tag)))
 
 (defun aichat--parse-followed-by-section ()
@@ -541,13 +565,13 @@
   (parsec-str "<ai-context>")
   (aichat--parse-spaces)
   (let ((context-path (parsec-until-s
-                  (parsec-and
-                   (aichat--parse-spaces)
-                   (parsec-str "</ai-context>")))))
+                       (parsec-and
+                        (aichat--parse-spaces)
+                        (parsec-str "</ai-context>")))))
     (aichat--parse-expand-context context-path)))
 
 (defun aichat--parse-expand-context (path)
-  "Expand the given context PATH into its content."
+  "Expand the context PATH into its content."
   (cond
    ((string-prefix-p "http" path)
     (aichat--text-from-url path))
@@ -605,7 +629,8 @@
    (cons 'system (string-trim (aichat--parse-user-content)))))
 
 (defun aichat--text-from-url (url &optional use-highest-readability)
-  "Retrieve the text content from the given URL."
+  "Retrieve the text content from URL.
+If USE-HIGHEST-READABILITY is non-nil, use eww's readability heuristics."
   (with-current-buffer
       (url-retrieve-synchronously url t nil 10.0)
     (let ((dom (libxml-parse-html-region)))
@@ -615,7 +640,9 @@
       (aichat--dom-texts-inline-aware dom))))
 
 (defun aichat--dom-texts-inline-aware (node &optional block-separator inline-separator)
-  "Extract text from the given DOM node, aware of inline and block elements."
+  "Extract text from the DOM NODE, aware of inline and block elements.
+BLOCK-SEPARATOR separates block elements.
+INLINE-SEPARATOR separates inline elements."
   (let ((block-separator (or block-separator "\n"))
         (inline-separator (or inline-separator " ")))
     (mapconcat
