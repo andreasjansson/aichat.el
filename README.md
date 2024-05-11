@@ -2,7 +2,7 @@
 
 _Chat with language models in Emacs._
 
-![cap.gif]()
+![screencap](cap.gif)
 
 ## Features
 
