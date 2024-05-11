@@ -8,6 +8,7 @@ Chat with language models in Emacs.
 * Supports OpenAI, Claude, Replicate, Groq, Ollama
 * Include context from other open buffers, files, and websites on the internet.
 * Save and load chat sessions locally.
+* Streaming text output.
 
 ## Setup
 
