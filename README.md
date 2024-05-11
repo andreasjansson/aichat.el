@@ -72,3 +72,4 @@ What's the next folk music event in Bohuslän?
 * `C-; h` - Insert an `<ai-context>` tag with a website URL
 * `C-; m` - Change AI model
 * `C-; c` - Copy the current code block (delimited by triple backticks)
+* `C-g` - While text is being generated, use `C-g` to interrupt generation
