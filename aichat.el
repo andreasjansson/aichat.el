@@ -92,6 +92,7 @@
 (defvar aichat-assistant-tag "## ASSISTANT:")
 (defvar aichat-system-tag "## SYSTEM:")
 
+;;;###autoload
 (defun aichat ()
   "Create a new buffer and switch to `aichat-mode`."
   (interactive)
