@@ -32,14 +32,21 @@
 (require 'markdown-mode)
 
 (defconst aichat-available-models
-  '(replicate/meta/meta-llama-3-70b-instruct
+  '(replicate/meta/meta-llama-3.1-405b-instruct
+    replicate/meta/meta-llama-3-70b-instruct
     replicate/meta/meta-llama-3-70b
     replicate/meta/meta-llama-3-8b-instruct
     replicate/meta/meta-llama-3-8b
     replicate/snowflake/snowflake-arctic-instruct
     claude/claude-3-haiku-20240307
     claude/claude-3-opus-20240229
+    claude/claude-3-5-sonnet-20240620
+    openai/o1-preview
     openai/gpt-4-turbo
+    openai/gpt-4o
+    openai/gpt-4o-2024-08-06
+    openai/gpt-4o-mini
+    google/gemini-pro
     groq/llama3-8b-8192
     groq/llama3-70b-8192
     groq/mixtral-8x7b-32768
@@ -242,7 +249,7 @@ CALLBACK is called with the final extracted text.
 COMPLETE-CALLBACK is called if the process completed successfully.
 CANCEL-CALLBACK is called if the process was cancelled.
 RESTORE-CALLBACK restores the buffer state.
-ACCUMULATED-OUTPUT is the final output from the process.")
+ACCUMULATED-OUTPUT is the final output from the process."
 "Function for handling the completion or cancellation of the curl process."
 (when (memq (process-status proc) '(exit signal))
   (unless (string-empty-p accumulated-output)
@@ -265,6 +272,8 @@ ACCUMULATED-OUTPUT is the final output from the process.")
     #'aichat--claude-extract-text)
    ((string= provider "openai")
     #'aichat--openai-extract-text)
+   ((string= provider "google")
+    #'aichat--google-extract-text)
    ((string= provider "groq")
     #'aichat--openai-extract-text)
    ((string= provider "ollama")
@@ -303,6 +312,33 @@ ACCUMULATED-OUTPUT is the final output from the process.")
     (message (format "Unparseable event: %s" event))
     ""))
 
+(defun aichat--o1-extract-text (event)
+  "Extract the text from an OpenAI o1 EVENT."
+  (let* ((data (json-read-from-string event))
+         (choices (assoc-default 'choices data))
+         (first-choice (elt choices 0))
+         (message (assoc-default 'message first-choice))
+         (content (assoc-default 'content message)))
+    (or content "")))
+
+(defun aichat--google-extract-text (event)
+  "Extract the text from an OpenAI EVENT."
+  (if (string-prefix-p "data: " event)
+      (let ((data-string (substring event 6)))
+        (if (string-prefix-p "[DONE]" data-string)
+            ""
+          (let* ((data-string (substring event 6))
+                 (data (json-read-from-string data-string))
+                 (candidates (assoc-default 'candidates data))
+                 (first-candidate (elt choices 0))
+                 (content (assoc-default 'content first-candidate))
+                 (parts (assoc-default 'parts content))
+                 (first-part (elt parts 0))
+                 (text (assoc-default 'text first-part)))
+            (or text ""))))
+    (message (format "Unparseable event: %s" event))
+    ""))
+
 (defun aichat--model-provider (model)
   "Get the provider of the AI MODEL."
   (car (split-string (symbol-name model) "/")))
@@ -333,6 +369,8 @@ ACCUMULATED-OUTPUT is the final output from the process.")
     (aichat--must-env "REPLICATE_API_KEY"))
    ((string= provider "claude")
     (aichat--must-env "ANTHROPIC_API_KEY"))
+   ((string= provider "google")
+    (aichat--must-env "GEMINI_API_KEY"))
    ((string= provider "openai")
     (aichat--must-env "OPENAI_API_KEY"))
    ((string= provider "groq")
@@ -359,6 +397,8 @@ ACCUMULATED-OUTPUT is the final output from the process.")
       (push `("anthropic-beta" . "messages-2023-12-15") headers))
      ((string= provider "openai")
       (push `("Authorization" . ,(format "Bearer %s" api-key)) headers))
+     ((string= provider "google")
+      (push `("Authorization" . ,(format "Bearer %s" api-key)) headers))
      ((string= provider "groq")
       (push `("Authorization" . ,(format "Bearer %s" api-key)) headers))
      ((string= provider "ollama")
@@ -374,6 +414,8 @@ ACCUMULATED-OUTPUT is the final output from the process.")
     #'aichat--claude-request-data)
    ((string= provider "openai")
     #'aichat--openai-request-data)
+   ((string= provider "google")
+    #'aichat--google-request-data)
    ((string= provider "groq")
     #'aichat--openai-request-data)
    ((string= provider "ollama")
@@ -383,19 +425,52 @@ ACCUMULATED-OUTPUT is the final output from the process.")
   "Create the request data for the OpenAI API call.
 MODEL-NAME is the name of the model to use.
 DIALOG is the multi-turn dialog to send."
-  (let* ((messages (mapcar (lambda (message)
+  (let* ((is-o1-model (member model-name '("o1-preview" "o1-mini")))
+         (filtered-dialog (if is-o1-model
+                              (seq-filter (lambda (message)
+                                            (not (eq (car message) 'system)))
+                                          dialog)
+                            dialog))
+         (messages (mapcar (lambda (message)
                              `((role . ,(symbol-name (car message)))
                                (content . ,(cdr message))))
+                           filtered-dialog))
+         (last-message (car (last filtered-dialog)))
+         (token-param (if is-o1-model 'max_completion_tokens 'max_tokens)))
+    ;; Check if the last message is of type assistant
+    (when (eq (car last-message) 'assistant)
+      ;; Append a new user message "Continue..."
+      (setq messages (append messages `(((role . "user") (content . "Seamlessly continue generating from the point it cut off."))))))
+    (let ((base-request `(("messages" . ,messages)
+                          ("model" . ,model-name)
+                          (,token-param . 8192))))
+      (if is-o1-model
+          (json-encode base-request)
+        (json-encode (append base-request '(("stream" . t))))))))
+
+(defun aichat--google-request-data (model-name dialog)
+  "Create the request data for the OpenAI API call.
+MODEL-NAME is the name of the model to use.
+DIALOG is the multi-turn dialog to send."
+  (let* ((parts (mapcar (lambda (message)
+                             `((role . ,(symbol-name (aichat--google-transform-role (car message))))
+                               (text . ,(cdr message))))
                            dialog))
          (last-message (car (last dialog))))
     ;; Check if the last message is of type system
     (when (eq (car last-message) 'assistant)
       ;; Append a new user message "Continue..."
       (setq messages (append messages `(((role . "user") (content . "Seamlessly continue generating from the point it cut off."))))))
-    (json-encode `(("messages" . ,messages)
-                   ("model" . ,model-name)
-                   ("max_tokens" . 2048)
-                   ("stream" . t)))))
+    (json-encode `(("contents" . (parts . ,parts))))))
+
+(defun aichat--google-transform-role (role)
+  (cond
+   ((eq role 'system)
+    'user) ;; TODO: is this right? how does gemini do system prompts?
+   ((eq role 'user)
+    'user)
+   ((eq role 'assistant)
+    'model)))
 
 (defun aichat--claude-request-data (model-name dialog)
   "Create the request data for the Claude API call.
@@ -436,6 +511,7 @@ COMPLETE-CALLBACK is called when done.
 CANCEL-CALLBACK is called if cancelled."
   (let* ((provider (aichat--model-provider aichat-model))
          (model-name (aichat--model-name aichat-model))
+         (is-o1-model (member model-name '("o1-preview" "o1-mini")))
          (api-url (aichat--get-api-url provider))
          (api-key (aichat--get-api-key provider))
          (request-headers (aichat--get-request-headers provider api-key))
@@ -443,7 +519,7 @@ CANCEL-CALLBACK is called if cancelled."
          (request-data (funcall request-data-fn model-name dialog))
          (output-buffer (current-buffer))
          (insert-position (point))
-         (text-extractor (aichat--extra-text-fn provider))
+         (text-extractor (if is-o1-model 'aichat--o1-extract-text (aichat--extra-text-fn provider)))
          (text-callback (lambda (text)
                           (with-current-buffer output-buffer
                             (goto-char insert-position)
@@ -471,6 +547,8 @@ CANCEL-CALLBACK is called if cancelled."
      process (lambda (proc _event)
                (aichat--process-sentinel
                 proc text-extractor text-callback complete-callback cancel-callback restore-callback accumulated-output)))
+
+
     (set-process-query-on-exit-flag process nil)
 
     (with-current-buffer output-buffer
